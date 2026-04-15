@@ -1,0 +1,161 @@
+% Core references for "When Models Lie to Please"
+% Organized by topic: CoT faithfulness, sycophancy, interpretability infrastructure.
+
+% ============================================================
+% CoT Faithfulness
+% ============================================================
+
+@inproceedings{turpin2023language,
+  title = {Language Models Don't Always Say What They Think: Unfaithful Explanations in Chain-of-Thought Prompting},
+  author = {Turpin, Miles and Michael, Julian and Perez, Ethan and Bowman, Samuel R.},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year = {2023},
+  note = {Primary evidence that biasing features influence CoT without being mentioned; accuracy drops up to 36\%.}
+}
+
+@article{arcuschin2025cot,
+  title = {Chain-of-Thought Reasoning In The Wild Is Not Always Faithful},
+  author = {Arcuschin, Lior and others},
+  year = {2025},
+  note = {Post-hoc rationalization rates: GPT-4o-mini 13\%, Claude Haiku 3.5 7\%. Extends unfaithfulness to non-adversarial settings.}
+}
+
+@techreport{anthropic2025reasoning,
+  title = {Reasoning Models Don't Always Say What They Think},
+  institution = {Anthropic},
+  year = {2025},
+  note = {System card evaluation finding that reasoning models may suppress clues they demonstrably used.}
+}
+
+@article{metr2025cot,
+  title = {Chain-of-Thought May Be Highly Informative Despite Unfaithfulness},
+  author = {{METR}},
+  year = {2025},
+  note = {Unfaithfulness concentrates in simple reasoning; complex multi-step CoT is nearly always faithful.}
+}
+
+@article{barez2025cot,
+  title = {Chain-of-Thought Is Not Explainability},
+  author = {Barez, Fazl and others},
+  year = {2025},
+  note = {Framework: procedural soundness, causal relevance, completeness as faithfulness dimensions.}
+}
+
+@inproceedings{yee2024dissociation,
+  title = {Dissociation of Faithful and Unfaithful Reasoning in Language Models},
+  author = {Yee, others},
+  year = {2024},
+  note = {Probing study dissociating faithful from unfaithful internal reasoning representations.}
+}
+
+% ============================================================
+% Sycophancy
+% ============================================================
+
+@article{sycophancy2025notone,
+  title = {Sycophancy Is Not One Thing},
+  year = {2025},
+  note = {Key result: sycophantic agreement, genuine agreement, and sycophantic praise are linearly separable in activation space. Core motivation for our geometry analysis.}
+}
+
+@article{rimsky2024steering,
+  title = {Steering Language Models via Activation Steering},
+  author = {Rimsky, Nina and others},
+  year = {2024},
+  note = {DiffMean vectors can steer sycophancy; baseline method for our intervention comparison.}
+}
+
+@article{sae_sycophancy2025,
+  title = {Mitigating Sycophancy via Sparse Autoencoders},
+  year = {2025},
+  journal = {OpenReview},
+  note = {SAF method on Gemma-2-2b-it reduces sycophancy from 63\% to 39\%; layer 17 identified as critical. Direct precedent scaled to Gemma 3.}
+}
+
+@inproceedings{wang2025latent,
+  title = {Latent Representation Analysis of Sycophancy},
+  author = {Wang and others},
+  booktitle = {International Conference on Learning Representations},
+  year = {2025},
+  note = {Disentangles sycophancy from truthfulness in latent space.}
+}
+
+@article{elephant2025,
+  title = {ELEPHANT: Evaluating Social Sycophancy in Language Models},
+  year = {2025},
+  note = {Broader sycophancy taxonomy including framing and moral sycophancy.}
+}
+
+@article{consistency2025,
+  title = {Consistency Training Reduces Sycophancy},
+  author = {{Google}},
+  year = {2025},
+  note = {BCT reduces sycophancy and jailbreak success; training-time intervention we contrast against.}
+}
+
+% ============================================================
+% Interpretability Infrastructure
+% ============================================================
+
+@techreport{gemmascope2025,
+  title = {Gemma Scope 2: Open Sparse Autoencoders for Gemma 3},
+  author = {{Google DeepMind}},
+  year = {2025},
+  note = {Primary toolchain. SAEs + transcoders on all Gemma 3 layers (1B--27B); Matryoshka training.}
+}
+
+@article{anthropic2025circuit,
+  title = {Circuit Tracing: Revealing Computational Graphs in Language Models},
+  author = {{Anthropic}},
+  year = {2025},
+  note = {Attribution graphs via cross-layer transcoders, applied to Claude 3.5 Haiku. Methodology template.}
+}
+
+@article{biology2025,
+  title = {On the Biology of a Large Language Model},
+  author = {{Anthropic}},
+  year = {2025},
+  note = {Diverse circuit studies including hallucination and multi-step reasoning. Perturbation methodology.}
+}
+
+@article{gdm_negative2025,
+  title = {Negative Results for SAE Probes on Downstream Tasks},
+  author = {{Google DeepMind}},
+  year = {2025},
+  note = {SAE probes underperform dense probes for jailbreak detection. Motivates circuit-level (not probe-level) approach.}
+}
+
+@article{goodfire2025pii,
+  title = {SAE Probes for Production PII Detection},
+  author = {{Goodfire} and {Rakuten}},
+  year = {2025},
+  note = {SAE probes outperform activation probes for PII detection. Counterevidence to GDM negative result; context matters.}
+}
+
+@article{scaling_mono2024,
+  title = {Scaling Monosemanticity: Extracting Interpretable Features from Claude 3 Sonnet},
+  author = {{Anthropic}},
+  year = {2024},
+  note = {Safety-relevant features including deception and sycophancy in large models.}
+}
+
+@article{emergent_misalignment2025,
+  title = {Emergent Misalignment: Narrow Finetuning Can Produce Broadly Misaligned LLMs},
+  year = {2025},
+  note = {Narrow fine-tuning causes broad misalignment detectable with SAEs. Possible connection to override circuit.}
+}
+
+@article{nanda2025update,
+  title = {An Updated Interpretability Research Agenda},
+  author = {Nanda, Neel},
+  year = {2025},
+  note = {Pragmatic vs. ambitious interpretability framing; situates our work.}
+}
+
+@article{baker2025monitoring,
+  title = {Monitoring Reasoning Models for Misbehavior},
+  author = {Baker, Bowen and others},
+  institution = {OpenAI},
+  year = {2025},
+  note = {Monitoring reasoning traces for hidden misbehavior; adjacent to our faithfulness detection work.}
+}

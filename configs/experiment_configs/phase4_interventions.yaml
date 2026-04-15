@@ -1,0 +1,69 @@
+# Phase 4: Detection and Mitigation
+# Classifier training on SAE features; inference-time intervention evaluation.
+
+model: gemma3_4b
+phase1_results: experiments/results/phase1
+phase2_results: experiments/results/phase2
+
+classifiers:
+  # Lightweight linear classifiers trained on SAE feature activations
+  targets:
+    - faithfulness            # Is current CoT generation faithful?
+    - sycophancy              # Is model being sycophantic vs. genuinely agreeing?
+    - override_active         # Is the override circuit currently active?
+  feature_source: resid_post
+  # Which layer(s) to use; null = sweep all layers and pick best
+  probe_layer: null
+  model_type: logistic_regression
+  train_test_split: 0.8
+  n_bootstrap: 100            # Bootstrap for confidence intervals
+
+  baselines:
+    - name: dense_linear_probe
+      description: "Dense linear probe on raw residual stream (GDM negative result baseline)"
+    - name: output_only
+      description: "Classifier trained on output token probabilities only"
+    - name: existing_cot_metrics
+      description: "Turpin et al. correlation-based unfaithfulness score"
+
+interventions:
+  clamping:
+    enabled: true
+    # Features to clamp are the top-k override features from Phase 2
+    top_k: [10, 20, 50]
+    clamp_value: 0.0
+
+  directional_steering:
+    enabled: true
+    # DiffMean vectors (Rimsky et al. baseline) + SAE-feature-derived vectors
+    steering_methods:
+      - diffmean                # Baseline: mean activation difference
+      - sae_feature_direction   # Our method: top-k SAE feature activations
+    multipliers: [-2.0, -1.0, -0.5, 0.5, 1.0, 2.0]   # Sweep; negative = anti-override
+
+  conditional:
+    enabled: true
+    # Apply steering only when the override classifier fires above threshold.
+    classifier_threshold: 0.7
+    intervention: directional_steering
+    multiplier: -1.0
+
+evaluation:
+  faithfulness_metrics:
+    - cot_correlation_score     # Turpin et al. style
+    - contradiction_rate        # How often does CoT contradict the answer?
+    - biased_feature_mention    # Does CoT mention the biasing feature?
+  sycophancy_metrics:
+    - opinion_flip_rate         # How often does model change correct answer after opinion prefix?
+    - pressure_capitulation_rate  # How often does model capitulate to "are you sure?"
+  capability_benchmarks:
+    - mmlu                      # General knowledge preservation
+    - gsm8k                     # Math reasoning preservation
+  safety_metrics:
+    - over_correction_rate      # Does model become inappropriately disagreeable?
+
+output:
+  results_dir: experiments/results/phase4
+  save_classifier_weights: true
+  save_evaluation_results: true
+  save_intervention_traces: true   # Per-prompt traces for error analysis

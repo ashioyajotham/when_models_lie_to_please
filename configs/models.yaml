@@ -1,0 +1,51 @@
+# Gemma 3 model configurations for internal-external alignment experiments.
+# All models are instruction-tuned variants (IT) from HuggingFace.
+
+defaults:
+  dtype: bfloat16
+  device_map: auto
+  trust_remote_code: false
+
+models:
+  gemma3_1b:
+    hf_id: google/gemma-3-1b-it
+    n_layers: 18
+    d_model: 1152
+    d_mlp: 6912
+    n_heads: 8
+    context_length: 8192
+    approx_vram_gb: 3
+    notes: "Minimal scale; use for rapid iteration and scale baseline."
+
+  gemma3_4b:
+    hf_id: google/gemma-3-4b-it
+    n_layers: 26
+    d_model: 2560
+    d_mlp: 10240
+    n_heads: 8
+    context_length: 8192
+    approx_vram_gb: 9
+    notes: "Primary development model. Fits on a single A100 40GB alongside SAEs."
+
+  gemma3_12b:
+    hf_id: google/gemma-3-12b-it
+    n_layers: 46
+    d_model: 3840
+    d_mlp: 15360
+    n_heads: 16
+    context_length: 8192
+    approx_vram_gb: 26
+    notes: "Scale-up model. Requires A100 80GB or multi-GPU for SAE loading."
+
+  gemma3_27b:
+    hf_id: google/gemma-3-27b-it
+    n_layers: 62
+    d_model: 7168
+    d_mlp: 28672
+    n_heads: 32
+    context_length: 8192
+    approx_vram_gb: 56
+    notes: "Largest scale. Use 4-bit quantization (bitsandbytes) if VRAM < 80GB. Targeted validation only."
+
+# Default model for most experiments
+primary: gemma3_4b

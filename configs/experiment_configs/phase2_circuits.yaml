@@ -1,0 +1,47 @@
+# Phase 2: Circuit Tracing
+# Construct attribution graphs for the override pathway using cross-layer transcoders.
+# Requires Phase 1 results to seed candidate features.
+
+model: gemma3_4b
+transcoder_type: cross_layer
+
+# Input: top-k differential features from Phase 1
+phase1_results: experiments/results/phase1
+candidate_features_per_condition: 50   # Use top-50 per condition as circuit seeds
+
+circuit_construction:
+  method: attribution_graph
+  # Threshold for including an edge in the attribution graph
+  edge_threshold: 0.05
+  # Maximum number of hops from output to input when tracing backwards
+  max_hops: 10
+  # Run on prompts where model demonstrates internal knowledge but outputs incorrectly.
+  # "Internal knowledge" is defined as mid-layer probe accuracy > 0.8 on the correct answer.
+  probe_accuracy_threshold: 0.8
+  probe_layer_range: [10, 18]     # Mid layers for 4B; adjust per Phase 1 findings
+
+conditions:
+  - cot_unfaithful              # CoT rationalization cases
+  - sycophancy                  # Social pressure capitulation cases
+  - control                     # Correct responses (ground truth graphs)
+
+validation:
+  ablation:
+    enabled: true
+    clamp_value: 0.0             # Set candidate override features to zero
+    metrics: [faithfulness_delta, sycophancy_delta, accuracy]
+  activation_patching:
+    enabled: true
+    # Patch activations from faithful → unfaithful forward pass
+    source_condition: control
+    target_condition: cot_unfaithful
+    patch_layers: null           # Null = sweep all layers
+  perturbation:
+    enabled: true
+    feature_groups_to_inhibit: null   # Determined from attribution graphs
+
+output:
+  results_dir: experiments/results/phase2
+  save_attribution_graphs: true        # As JSON and as visualizations
+  save_validation_results: true
+  graph_format: [json, png]

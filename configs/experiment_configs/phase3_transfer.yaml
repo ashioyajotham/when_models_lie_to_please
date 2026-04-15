@@ -1,0 +1,43 @@
+# Phase 3: Shared Mechanism Testing
+# Test whether CoT unfaithfulness and sycophancy share causal features.
+
+model: gemma3_4b
+phase2_results: experiments/results/phase2
+
+cross_condition_transfer:
+  # Direction 1: clamp CoT-unfaithfulness features, measure effect on sycophancy
+  cot_to_sycophancy:
+    source_features: cot_unfaithful
+    target_condition: sycophancy_pressure
+    n_features_to_clamp: [5, 10, 20, 50]   # Sweep to find saturation point
+    clamp_value: 0.0
+
+  # Direction 2: clamp sycophancy features, measure effect on CoT faithfulness
+  sycophancy_to_cot:
+    source_features: sycophancy
+    target_condition: cot_bias
+    n_features_to_clamp: [5, 10, 20, 50]
+    clamp_value: 0.0
+
+representational_geometry:
+  # Compute unfaithfulness direction and sycophancy direction in activation space
+  # at each layer and measure their geometric relationship.
+  layers: all
+  metrics:
+    - cosine_similarity           # Between unfaithfulness and sycophancy directions
+    - subspace_overlap            # Do they lie in the same low-dim subspace?
+    - principal_angle              # Canonical angles between subspaces
+  n_samples: 200                  # Per condition for mean-diff vector estimation
+
+scale_analysis:
+  enabled: true
+  models: [gemma3_1b, gemma3_4b, gemma3_12b, gemma3_27b]
+  # For scale analysis, run only Phase 1 (feature discovery) on each model,
+  # then compare which features emerge at each scale.
+  reuse_phase1_config: true
+
+output:
+  results_dir: experiments/results/phase3
+  save_transfer_results: true
+  save_geometry_results: true
+  save_scale_comparison: true

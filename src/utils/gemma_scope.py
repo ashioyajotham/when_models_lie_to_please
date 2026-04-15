@@ -1,0 +1,265 @@
+"""
+Utilities for loading and interfacing with Gemma Scope 2 SAEs and transcoders.
+
+Gemma Scope 2 provides JumpReLU SAEs trained on every layer of Gemma 3 IT models
+(1B, 4B, 12B, 27B), with Matryoshka training for stable nested representations.
+Transcoders (skip and cross-layer) are available for circuit tracing.
+
+HuggingFace repo: google/gemma-scope-2
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
+
+import torch
+from huggingface_hub import hf_hub_download, list_repo_files
+
+logger = logging.getLogger(__name__)
+
+HookPoint = Literal["resid_post", "mlp_out", "attn_out"]
+TranscoderType = Literal["skip", "cross_layer"]
+
+GEMMA_SCOPE_2_REPO = "google/gemma-scope-2"
+
+# Map from model short-name to HuggingFace model ID
+MODEL_HF_IDS = {
+    "gemma3_1b": "google/gemma-3-1b-it",
+    "gemma3_4b": "google/gemma-3-4b-it",
+    "gemma3_12b": "google/gemma-3-12b-it",
+    "gemma3_27b": "google/gemma-3-27b-it",
+}
+
+# Number of layers per model
+N_LAYERS = {
+    "gemma3_1b": 18,
+    "gemma3_4b": 26,
+    "gemma3_12b": 46,
+    "gemma3_27b": 62,
+}
+
+
+@dataclass
+class SAEConfig:
+    model_name: str
+    layer: int
+    hook_point: HookPoint
+    width_multiplier: int   # Expansion factor relative to d_model (e.g., 8, 16)
+    repo_path: str          # Path within the HuggingFace repo
+
+
+@dataclass
+class TranscoderConfig:
+    model_name: str
+    source_layer: int
+    target_layer: int       # Same as source_layer for skip-transcoders
+    transcoder_type: TranscoderType
+    repo_path: str
+
+
+def build_sae_repo_path(
+    model_name: str,
+    layer: int,
+    hook_point: HookPoint,
+    width_multiplier: int,
+) -> str:
+    """
+    Construct the file path within google/gemma-scope-2 for a given SAE.
+
+    Naming conventions follow the Gemma Scope 2 technical report.
+    Actual paths should be verified against the HuggingFace repo listing.
+    """
+    return f"{model_name}/{hook_point}/layer_{layer}/width_{width_multiplier}x/params.npz"
+
+
+def build_transcoder_repo_path(
+    model_name: str,
+    source_layer: int,
+    transcoder_type: TranscoderType,
+    target_layer: int | None = None,
+) -> str:
+    if transcoder_type == "skip":
+        return f"{model_name}/transcoder_skip/layer_{source_layer}/params.npz"
+    target = target_layer if target_layer is not None else source_layer + 1
+    return f"{model_name}/transcoder_cross/layer_{source_layer}_to_{target}/params.npz"
+
+
+def load_sae(
+    model_name: str,
+    layer: int,
+    hook_point: HookPoint = "resid_post",
+    width_multiplier: int = 16,
+    cache_dir: str | Path | None = None,
+    device: str = "cpu",
+) -> "JumpReLUSAE":
+    """
+    Download and instantiate a Gemma Scope 2 SAE for the specified layer and hook point.
+
+    Returns a JumpReLUSAE instance with loaded weights.
+    """
+    repo_path = build_sae_repo_path(model_name, layer, hook_point, width_multiplier)
+    local_path = hf_hub_download(
+        repo_id=GEMMA_SCOPE_2_REPO,
+        filename=repo_path,
+        cache_dir=cache_dir,
+    )
+    logger.info("Loaded SAE from %s", local_path)
+    return JumpReLUSAE.from_file(local_path, device=device)
+
+
+def load_all_layer_saes(
+    model_name: str,
+    hook_point: HookPoint = "resid_post",
+    width_multiplier: int = 16,
+    layer_range: tuple[int, int] | None = None,
+    cache_dir: str | Path | None = None,
+    device: str = "cpu",
+) -> dict[int, "JumpReLUSAE"]:
+    """
+    Load SAEs for all (or a range of) layers in the model.
+
+    Returns a dict mapping layer index to SAE instance.
+    """
+    n_layers = N_LAYERS[model_name]
+    start, end = layer_range if layer_range else (0, n_layers - 1)
+    saes = {}
+    for layer in range(start, end + 1):
+        try:
+            saes[layer] = load_sae(
+                model_name, layer, hook_point, width_multiplier, cache_dir, device
+            )
+        except Exception as exc:
+            logger.warning("Could not load SAE for layer %d: %s", layer, exc)
+    return saes
+
+
+def load_transcoder(
+    model_name: str,
+    source_layer: int,
+    transcoder_type: TranscoderType = "cross_layer",
+    target_layer: int | None = None,
+    cache_dir: str | Path | None = None,
+    device: str = "cpu",
+) -> "CrossLayerTranscoder":
+    """
+    Download and instantiate a Gemma Scope 2 transcoder.
+    """
+    repo_path = build_transcoder_repo_path(
+        model_name, source_layer, transcoder_type, target_layer
+    )
+    local_path = hf_hub_download(
+        repo_id=GEMMA_SCOPE_2_REPO,
+        filename=repo_path,
+        cache_dir=cache_dir,
+    )
+    logger.info("Loaded transcoder from %s", local_path)
+    return CrossLayerTranscoder.from_file(local_path, device=device)
+
+
+class JumpReLUSAE(torch.nn.Module):
+    """
+    JumpReLU sparse autoencoder as used in Gemma Scope 2.
+
+    JumpReLU applies a learned threshold per feature; features are active only
+    when pre-activation exceeds the threshold. This produces sparser activations
+    than standard ReLU SAEs and more monosemantic features.
+
+    Weight file format follows Gemma Scope 2 conventions (numpy .npz).
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        n_features: int,
+        threshold: torch.Tensor,
+        W_enc: torch.Tensor,
+        b_enc: torch.Tensor,
+        W_dec: torch.Tensor,
+        b_dec: torch.Tensor,
+    ) -> None:
+        super().__init__()
+        self.d_model = d_model
+        self.n_features = n_features
+        self.register_buffer("threshold", threshold)
+        self.W_enc = torch.nn.Parameter(W_enc)
+        self.b_enc = torch.nn.Parameter(b_enc)
+        self.W_dec = torch.nn.Parameter(W_dec)
+        self.b_dec = torch.nn.Parameter(b_dec)
+
+    @classmethod
+    def from_file(cls, path: str | Path, device: str = "cpu") -> "JumpReLUSAE":
+        import numpy as np
+
+        data = np.load(path)
+        return cls(
+            d_model=data["W_enc"].shape[0],
+            n_features=data["W_enc"].shape[1],
+            threshold=torch.tensor(data["threshold"], device=device),
+            W_enc=torch.tensor(data["W_enc"], device=device),
+            b_enc=torch.tensor(data["b_enc"], device=device),
+            W_dec=torch.tensor(data["W_dec"], device=device),
+            b_dec=torch.tensor(data["b_dec"], device=device),
+        )
+
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        pre_act = x @ self.W_enc + self.b_enc
+        # JumpReLU: zero out activations below per-feature threshold
+        return torch.where(pre_act > self.threshold, pre_act, torch.zeros_like(pre_act))
+
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        return z @ self.W_dec + self.b_dec
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        z = self.encode(x)
+        x_hat = self.decode(z)
+        return z, x_hat
+
+    @property
+    def feature_directions(self) -> torch.Tensor:
+        return self.W_dec
+
+
+class CrossLayerTranscoder(torch.nn.Module):
+    """
+    Cross-layer transcoder for attribution graph construction.
+
+    Maps SAE feature activations at a source layer to feature contributions
+    at a target layer, enabling multi-hop circuit tracing across layers.
+    """
+
+    def __init__(
+        self,
+        source_layer: int,
+        target_layer: int,
+        n_source_features: int,
+        n_target_features: int,
+        W: torch.Tensor,
+        b: torch.Tensor,
+    ) -> None:
+        super().__init__()
+        self.source_layer = source_layer
+        self.target_layer = target_layer
+        self.n_source_features = n_source_features
+        self.n_target_features = n_target_features
+        self.W = torch.nn.Parameter(W)
+        self.b = torch.nn.Parameter(b)
+
+    @classmethod
+    def from_file(cls, path: str | Path, device: str = "cpu") -> "CrossLayerTranscoder":
+        import numpy as np
+
+        data = np.load(path)
+        return cls(
+            source_layer=int(data["source_layer"]),
+            target_layer=int(data["target_layer"]),
+            n_source_features=data["W"].shape[0],
+            n_target_features=data["W"].shape[1],
+            W=torch.tensor(data["W"], device=device),
+            b=torch.tensor(data["b"], device=device),
+        )
+
+    def forward(self, source_features: torch.Tensor) -> torch.Tensor:
+        return source_features @ self.W + self.b

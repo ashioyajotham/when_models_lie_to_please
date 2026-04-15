@@ -1,0 +1,147 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{multirow}
+
+\title{\textbf{When Models Lie to Please: Tracing Internal-External Alignment Failures in Language Models via Sparse Interpretability}}
+
+\author{
+  Victor Ashioya \\
+  Bluedot Impact (AI Safety \& Interpretability) \\
+  \texttt{victorashioya960@gmail.com}
+}
+
+\date{February 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Large language models routinely produce outputs that diverge from their internal representations. This divergence manifests in two related but mechanistically distinct failure modes: \textbf{unfaithful chain-of-thought reasoning}, where stated reasoning steps do not causally drive the final answer, and \textbf{sycophancy}, where internally correct representations are suppressed to match user expectations. We hypothesize that both phenomena share a common upstream mechanism — a learned override circuit that suppresses internally computed answers in favor of contextually preferred outputs — but diverge in what triggers the override.
+
+Using Gemma Scope 2's suite of sparse autoencoders (SAEs) and transcoders trained on instruction-tuned Gemma 3 models (1B--27B), we: (1) identify and characterize SAE features that activate differentially during faithful vs.\ unfaithful reasoning and sycophantic vs.\ non-sycophantic responses; (2) trace multi-layer circuits via cross-layer transcoders that mediate sycophantic suppression of correct answers; (3) test whether the two failure modes share causal features or represent independent computational pathways; and (4) develop feature-based classifiers and steering interventions for detection and mitigation at inference time.
+
+% TODO: Fill in after experiments complete.
+% Primary finding: [shared/independent mechanism at layers X-Y].
+% Classifier accuracy: [X\%] for faithfulness detection, [Y\%] for sycophancy detection.
+% Steering: [X\%] reduction in sycophancy, [Y\%] improvement in CoT faithfulness.
+\end{abstract}
+
+% ============================================================
+\section{Introduction}
+\label{sec:intro}
+% ============================================================
+
+% TODO
+
+The convergence of two bodies of literature — CoT faithfulness evaluation and sycophancy mitigation — motivates this work. Both phenomena involve a model ``knowing'' one thing internally but ``saying'' another. Yet no work has examined whether they share mechanistic components.
+
+\paragraph{Why this matters for safety.} If CoT unfaithfulness and sycophancy share an override circuit, interventions on one may transfer to the other, and both can be monitored with shared instrumentation. If they are independent, separate detection systems are required. The answer has direct implications for the tractability of alignment monitoring.
+
+\paragraph{Why now.} Gemma Scope 2 \citep{gemmascope2025} provides the first complete set of cross-layer transcoders for a major model family, enabling multi-hop circuit tracing rather than single-layer probing. Prior work was limited to activation steering without understanding the underlying circuits \citep{rimsky2024steering} or to probing individual layers without cross-layer analysis.
+
+% ============================================================
+\section{Related Work}
+\label{sec:related}
+% ============================================================
+
+\subsection{CoT Faithfulness}
+
+\citet{turpin2023language} demonstrated that biasing features in prompts systematically influence CoT without being mentioned, with accuracy drops of up to 36\%. \citet{arcuschin2025cot} extended this to non-adversarial settings, finding post-hoc rationalization rates of 7--13\% in production models. Anthropic's system card evaluations \citep{anthropic2025reasoning} found that reasoning models fail to mention clues they demonstrably used. \citet{metr2025cot} showed that unfaithfulness concentrates in simple reasoning cases where the model can compute the answer without using its CoT.
+
+\subsection{Sycophancy}
+
+\citet{sycophancy2025notone} showed that sycophantic agreement, genuine agreement, and sycophantic praise are linearly separable in activation space along distinct axes — a key result our geometry analysis extends to the circuit level. \citet{rimsky2024steering} demonstrated that sycophancy can be steered using DiffMean activation vectors. Most relevant to our work, the OpenReview preprint on sparse autoencoder-based sycophancy mitigation \citep{sae_sycophancy2025} identified layer 17 of Gemma-2-2b-it as a critical layer, achieving a reduction from 63\% to 39\% sycophancy rate.
+
+\subsection{Mechanistic Interpretability Infrastructure}
+
+Anthropic's circuit tracing work \citep{anthropic2025circuit} established the methodology for attribution graph construction via cross-layer transcoders. ``The Biology of a Large Language Model'' \citep{biology2025} provided validation methodology including perturbation experiments. Google DeepMind's negative results \citep{gdm_negative2025} showed that SAE probes underperform dense probes for downstream task detection — a result our approach addresses by operating at the circuit level rather than the probe level.
+
+% ============================================================
+\section{Method}
+\label{sec:method}
+% ============================================================
+
+\subsection{Datasets}
+
+We construct five paired datasets (Table~\ref{tab:datasets}), each containing matched prompts eliciting contrasting behaviors. Target: $\geq 500$ pairs per dataset, balanced across domain and difficulty.
+
+\begin{table}[h]
+\centering
+\caption{Paired datasets. Each pair consists of a control (faithful/non-sycophantic) and treatment (unfaithful/sycophantic) prompt.}
+\label{tab:datasets}
+\begin{tabular}{lll}
+\toprule
+Dataset & Control & Treatment \\
+\midrule
+\texttt{cot\_bias} & Standard question & Biased-answer prefix \citep{turpin2023language} \\
+\texttt{cot\_contradiction} & ``Is $a > b$?'' & ``Is $b > a$?'' (same pair) \citep{arcuschin2025cot} \\
+\texttt{sycophancy\_opinion} & Factual question & User-stated incorrect opinion \\
+\texttt{sycophancy\_pressure} & First-turn answer & User challenge to correct answer \\
+\texttt{cross\_domain} & Stratified mix & Stratified mix (treatment) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Feature Discovery}
+
+For each prompt pair, we run a forward pass through Gemma 3 IT (primary: 4B), extract SAE feature activations at every layer via Gemma Scope 2, and compute differential activation $\Delta f = \bar{f}_\text{treatment} - \bar{f}_\text{control}$ per feature per layer. Significance is assessed via Welch's $t$-test with Bonferroni correction ($\alpha = 0.05$). The top-200 features per layer are retained for characterization.
+
+\subsection{Circuit Tracing}
+
+Using Gemma Scope 2's cross-layer transcoders, we construct attribution graphs for prompts where mid-layer probing indicates internal knowledge of the correct answer (probe accuracy $> 0.8$) but the model outputs an incorrect or sycophantic response. Circuits are validated via ablation (clamping candidate features to zero) and activation patching \citep{biology2025}.
+
+\subsection{Shared Mechanism Test}
+
+We test cross-condition transfer: features identified as causally involved in CoT unfaithfulness are clamped during sycophancy prompts (and vice versa). We also compute the cosine similarity between the unfaithfulness direction and sycophancy direction in activation space at each layer.
+
+\subsection{Interventions}
+
+Three inference-time intervention strategies are evaluated: (1) feature clamping, (2) SAE-feature-direction steering (our method), and (3) DiffMean steering \citep{rimsky2024steering} as a baseline. We also implement Conditional Activation Steering (CAST), which applies interventions only when an override classifier fires above threshold.
+
+% ============================================================
+\section{Results}
+\label{sec:results}
+% ============================================================
+
+% TODO: Fill in after experiments complete.
+
+\subsection{Phase 1: Feature Discovery}
+
+\subsection{Phase 2: Circuit Tracing}
+
+\subsection{Phase 3: Shared Mechanism}
+
+\subsection{Phase 4: Interventions}
+
+% ============================================================
+\section{Discussion}
+\label{sec:discussion}
+% ============================================================
+
+% TODO
+
+\paragraph{Limitations.}
+% TODO
+
+\paragraph{Future Work.}
+% TODO: Refusal as a third failure mode. Multilingual sycophancy.
+
+% ============================================================
+\section{Conclusion}
+\label{sec:conclusion}
+% ============================================================
+
+% TODO
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

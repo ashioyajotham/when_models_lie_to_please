@@ -1,0 +1,54 @@
+# Gemma Scope 2 SAE and transcoder configurations.
+# Full suite: https://huggingface.co/google/gemma-scope-2
+#
+# Gemma Scope 2 provides:
+#   - Residual stream SAEs at every layer (JumpReLU, Matryoshka widths)
+#   - MLP output SAEs
+#   - Attention output SAEs
+#   - Skip-transcoders (single layer)
+#   - Cross-layer transcoders (for attribution graphs)
+
+hf_repo: google/gemma-scope-2
+
+# SAE width choices per model (expansion factor relative to d_model).
+# Matryoshka training produces nested representations; wider SAEs are more interpretable
+# but slower. Use 16x for discovery, 8x for large-scale experiments.
+sae_widths:
+  gemma3_4b:
+    discovery: 16x         # ~40960 features
+    large_scale: 8x        # ~20480 features
+  gemma3_12b:
+    discovery: 8x
+    large_scale: 4x
+  gemma3_27b:
+    discovery: 4x
+    large_scale: 4x
+
+# Which SAE hook points to load. "resid_post" is the primary hook for most experiments.
+# "mlp_out" and "attn_out" enable decomposed analysis if needed.
+hook_points:
+  primary: resid_post
+  secondary:
+    - mlp_out
+    - attn_out
+
+# Transcoder settings for Phase 2 circuit tracing.
+transcoders:
+  type: cross_layer          # Use cross-layer transcoders for attribution graphs
+  fallback: skip             # Fall back to skip-transcoders if cross-layer is unavailable
+  # Layer ranges to load for circuit tracing (adjust based on Phase 1 findings)
+  # Defaults below cover the full model; narrow after Phase 1 for efficiency.
+  layer_range:
+    gemma3_4b: [0, 25]
+    gemma3_12b: [0, 45]
+    gemma3_27b: [0, 61]
+
+# Feature activation threshold for counting a feature as "active".
+activation_threshold: 0.0   # JumpReLU: features are binary above threshold
+
+# Caching settings
+cache:
+  store_activations: true
+  cache_dir: data/activations
+  compress: true              # gzip compression for stored activations
+  max_cache_gb: 100
