@@ -308,17 +308,6 @@ Full reference list is in `paper/references.bib`.
 
 ---
 
-## Venue Targets
-
-| Venue | Deadline (Approx.) | Notes |
-|-------|---------------------|-------|
-| ICLR 2027 | Sep 2026 | Primary target |
-| NeurIPS 2026 SafeGenAI workshop | Jun 2026 | Workshop paper possible during active research |
-| Alignment Forum / LessWrong | Anytime | Pre-publication community feedback |
-| Deep Learning Indaba 2026 | TBD | African AI research community connection |
-
----
-
 ## License
 
 MIT. See `LICENSE`.
