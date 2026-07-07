@@ -48,6 +48,7 @@ def parse_args():
     parser.add_argument("--datasets", nargs="+", default=None, help="Override dataset list")
     parser.add_argument("--output-dir", default=None, help="Override output directory")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--ignore-cache", action="store_true", help="Bypass and overwrite activation cache")
     return parser.parse_args()
 
 
@@ -98,7 +99,7 @@ def main():
         ctrl_cache = cache_base / "control.pkl"
         trt_cache = cache_base / "treatment.pkl"
 
-        if ctrl_cache.with_suffix(".pkl.gz").exists():
+        if not args.ignore_cache and ctrl_cache.with_suffix(".pkl.gz").exists():
             logger.info("Loading cached control activations from %s", ctrl_cache)
             ctrl_acts = load_activations(ctrl_cache)
         else:
@@ -106,7 +107,7 @@ def main():
             ctrl_acts = extractor.extract(controls, batch_size=cfg.dataset_params.batch_size)
             save_activations(ctrl_acts, ctrl_cache)
 
-        if trt_cache.with_suffix(".pkl.gz").exists():
+        if not args.ignore_cache and trt_cache.with_suffix(".pkl.gz").exists():
             logger.info("Loading cached treatment activations from %s", trt_cache)
             trt_acts = load_activations(trt_cache)
         else:
