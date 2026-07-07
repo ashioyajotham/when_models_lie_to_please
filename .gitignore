@@ -1,3 +1,7 @@
+# Claude
+CLAUDE.md
+.claude/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -24,6 +28,7 @@ env/
 # Data — raw data and cached activations are not committed
 data/raw/
 data/activations/
+data/processed/
 
 # Experiment outputs — results are tracked separately if needed
 experiments/results/

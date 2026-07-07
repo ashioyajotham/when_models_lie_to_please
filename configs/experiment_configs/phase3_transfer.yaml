@@ -2,6 +2,7 @@
 # Test whether CoT unfaithfulness and sycophancy share causal features.
 
 model: gemma3_4b
+phase1_results: experiments/results/phase1
 phase2_results: experiments/results/phase2
 
 cross_condition_transfer:

@@ -12,6 +12,7 @@ Documentation: https://github.com/google-deepmind/mishax
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import contextmanager
 from typing import Callable, Generator
 
@@ -47,7 +48,14 @@ def patch_activations(
         with patch_activations(model, {10: {"resid_post": faithful_act[10]}}):
             output = model(**inputs)
     """
-    if MISHAX_AVAILABLE:
+    if os.environ.get("MOCK_PIPELINE") == "true":
+        from src.utils.mock_utils import set_mock_intervention_active
+        set_mock_intervention_active(True)
+        try:
+            yield
+        finally:
+            set_mock_intervention_active(False)
+    elif MISHAX_AVAILABLE:
         yield from _patch_via_mishax(model, layer_patches)
     else:
         yield from _patch_via_manual_hooks(model, layer_patches)
@@ -120,15 +128,23 @@ def clamp_features(
     Used for ablation studies: set override features to zero and measure
     whether faithful/non-sycophantic behavior is restored.
     """
-    original_encode = sae.encode
+    if os.environ.get("MOCK_PIPELINE") == "true":
+        from src.utils.mock_utils import set_mock_intervention_active
+        set_mock_intervention_active(True)
+        try:
+            yield
+        finally:
+            set_mock_intervention_active(False)
+    else:
+        original_encode = sae.encode
 
-    def clamped_encode(x: torch.Tensor) -> torch.Tensor:
-        z = original_encode(x)
-        z[:, feature_indices] = clamp_value
-        return z
+        def clamped_encode(x: torch.Tensor) -> torch.Tensor:
+            z = original_encode(x)
+            z[:, feature_indices] = clamp_value
+            return z
 
-    sae.encode = clamped_encode
-    try:
-        yield
-    finally:
-        sae.encode = original_encode
+        sae.encode = clamped_encode
+        try:
+            yield
+        finally:
+            sae.encode = original_encode

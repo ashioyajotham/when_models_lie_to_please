@@ -17,6 +17,7 @@ toward or away from a target direction. Two steering methods are implemented:
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Callable
 
@@ -106,6 +107,15 @@ def apply_steering_hook(
 
     Returns the hook handle for removal.
     """
+    if os.environ.get("MOCK_PIPELINE") == "true":
+        from src.utils.mock_utils import set_mock_intervention_active
+        set_mock_intervention_active(True)
+        class DummyHandle:
+            def remove(self):
+                from src.utils.mock_utils import set_mock_intervention_active
+                set_mock_intervention_active(False)
+        return DummyHandle()
+
     target_layer = model.model.layers[layer]
     v = steering_vector.to(next(model.parameters()).device)
 

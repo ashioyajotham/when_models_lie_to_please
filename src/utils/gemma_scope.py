@@ -11,6 +11,7 @@ HuggingFace repo: google/gemma-scope-2
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -100,6 +101,10 @@ def load_sae(
 
     Returns a JumpReLUSAE instance with loaded weights.
     """
+    if os.environ.get("MOCK_PIPELINE") == "true":
+        from src.utils.mock_utils import MockSAE
+        return MockSAE()
+
     repo_path = build_sae_repo_path(model_name, layer, hook_point, width_multiplier)
     local_path = hf_hub_download(
         repo_id=GEMMA_SCOPE_2_REPO,
@@ -147,6 +152,10 @@ def load_transcoder(
     """
     Download and instantiate a Gemma Scope 2 transcoder.
     """
+    if os.environ.get("MOCK_PIPELINE") == "true":
+        from src.utils.mock_utils import MockTranscoder
+        return MockTranscoder(source_layer, target_layer or (source_layer + 1))
+
     repo_path = build_transcoder_repo_path(
         model_name, source_layer, transcoder_type, target_layer
     )
