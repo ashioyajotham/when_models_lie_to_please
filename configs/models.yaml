@@ -19,7 +19,7 @@ models:
 
   gemma3_4b:
     hf_id: google/gemma-3-4b-it
-    n_layers: 26
+    n_layers: 34
     d_model: 2560
     d_mlp: 10240
     n_heads: 8

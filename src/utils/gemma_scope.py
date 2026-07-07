@@ -37,7 +37,7 @@ MODEL_HF_IDS = {
 # Number of layers per model
 N_LAYERS = {
     "gemma3_1b": 18,
-    "gemma3_4b": 26,
+    "gemma3_4b": 34,
     "gemma3_12b": 46,
     "gemma3_27b": 62,
 }
@@ -69,11 +69,11 @@ def build_sae_repo_path(
 ) -> str:
     """
     Construct the file path within google/gemma-scope-2 for a given SAE.
-
-    Naming conventions follow the Gemma Scope 2 technical report.
-    Actual paths should be verified against the HuggingFace repo listing.
     """
-    return f"{model_name}/{hook_point}/layer_{layer}/width_{width_multiplier}x/params.npz"
+    # Map width: e.g., 16x or 16 -> "16k"
+    width_str = f"{width_multiplier}k" if isinstance(width_multiplier, int) else str(width_multiplier).replace("x", "k")
+    sparsity = "l0_big"
+    return f"{hook_point}_all/layer_{layer}_width_{width_str}_{sparsity}/params.safetensors"
 
 
 def build_transcoder_repo_path(
@@ -82,10 +82,9 @@ def build_transcoder_repo_path(
     transcoder_type: TranscoderType,
     target_layer: int | None = None,
 ) -> str:
-    if transcoder_type == "skip":
-        return f"{model_name}/transcoder_skip/layer_{source_layer}/params.npz"
-    target = target_layer if target_layer is not None else source_layer + 1
-    return f"{model_name}/transcoder_cross/layer_{source_layer}_to_{target}/params.npz"
+    width_str = "16k"
+    sparsity = "l0_big"
+    return f"transcoder_all/layer_{source_layer}_width_{width_str}_{sparsity}/params.safetensors"
 
 
 def load_sae(
@@ -105,9 +104,12 @@ def load_sae(
         from src.utils.mock_utils import MockSAE
         return MockSAE()
 
+    size = model_name.replace("gemma3_", "")
+    repo_id = f"google/gemma-scope-2-{size}-it"
     repo_path = build_sae_repo_path(model_name, layer, hook_point, width_multiplier)
+
     local_path = hf_hub_download(
-        repo_id=GEMMA_SCOPE_2_REPO,
+        repo_id=repo_id,
         filename=repo_path,
         cache_dir=cache_dir,
     )
@@ -156,11 +158,13 @@ def load_transcoder(
         from src.utils.mock_utils import MockTranscoder
         return MockTranscoder(source_layer, target_layer or (source_layer + 1))
 
+    size = model_name.replace("gemma3_", "")
+    repo_id = f"google/gemma-scope-2-{size}-it"
     repo_path = build_transcoder_repo_path(
         model_name, source_layer, transcoder_type, target_layer
     )
     local_path = hf_hub_download(
-        repo_id=GEMMA_SCOPE_2_REPO,
+        repo_id=repo_id,
         filename=repo_path,
         cache_dir=cache_dir,
     )
@@ -171,12 +175,6 @@ def load_transcoder(
 class JumpReLUSAE(torch.nn.Module):
     """
     JumpReLU sparse autoencoder as used in Gemma Scope 2.
-
-    JumpReLU applies a learned threshold per feature; features are active only
-    when pre-activation exceeds the threshold. This produces sparser activations
-    than standard ReLU SAEs and more monosemantic features.
-
-    Weight file format follows Gemma Scope 2 conventions (numpy .npz).
     """
 
     def __init__(
@@ -200,18 +198,31 @@ class JumpReLUSAE(torch.nn.Module):
 
     @classmethod
     def from_file(cls, path: str | Path, device: str = "cpu") -> "JumpReLUSAE":
-        import numpy as np
-
-        data = np.load(path)
-        return cls(
-            d_model=data["W_enc"].shape[0],
-            n_features=data["W_enc"].shape[1],
-            threshold=torch.tensor(data["threshold"], device=device),
-            W_enc=torch.tensor(data["W_enc"], device=device),
-            b_enc=torch.tensor(data["b_enc"], device=device),
-            W_dec=torch.tensor(data["W_dec"], device=device),
-            b_dec=torch.tensor(data["b_dec"], device=device),
-        )
+        path = Path(path)
+        if path.suffix == ".safetensors":
+            from safetensors.torch import load_file
+            tensors = load_file(path, device=device)
+            return cls(
+                d_model=tensors["w_enc"].shape[0],
+                n_features=tensors["w_enc"].shape[1],
+                threshold=tensors["threshold"],
+                W_enc=tensors["w_enc"],
+                b_enc=tensors["b_enc"],
+                W_dec=tensors["w_dec"],
+                b_dec=tensors["b_dec"],
+            )
+        else:
+            import numpy as np
+            data = np.load(path)
+            return cls(
+                d_model=data["W_enc"].shape[0],
+                n_features=data["W_enc"].shape[1],
+                threshold=torch.tensor(data["threshold"], device=device),
+                W_enc=torch.tensor(data["W_enc"], device=device),
+                b_enc=torch.tensor(data["b_enc"], device=device),
+                W_dec=torch.tensor(data["W_dec"], device=device),
+                b_dec=torch.tensor(data["b_dec"], device=device),
+            )
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         pre_act = x @ self.W_enc + self.b_enc
@@ -234,9 +245,6 @@ class JumpReLUSAE(torch.nn.Module):
 class CrossLayerTranscoder(torch.nn.Module):
     """
     Cross-layer transcoder for attribution graph construction.
-
-    Maps SAE feature activations at a source layer to feature contributions
-    at a target layer, enabling multi-hop circuit tracing across layers.
     """
 
     def __init__(
@@ -245,30 +253,74 @@ class CrossLayerTranscoder(torch.nn.Module):
         target_layer: int,
         n_source_features: int,
         n_target_features: int,
-        W: torch.Tensor,
-        b: torch.Tensor,
+        W: torch.Tensor | None = None,
+        b: torch.Tensor | None = None,
+        w_enc: torch.Tensor | None = None,
+        w_dec: torch.Tensor | None = None,
+        b_enc: torch.Tensor | None = None,
+        b_dec: torch.Tensor | None = None,
+        threshold: torch.Tensor | None = None,
     ) -> None:
         super().__init__()
         self.source_layer = source_layer
         self.target_layer = target_layer
         self.n_source_features = n_source_features
         self.n_target_features = n_target_features
-        self.W = torch.nn.Parameter(W)
-        self.b = torch.nn.Parameter(b)
+        
+        if W is not None:
+            self.W = torch.nn.Parameter(W)
+        else:
+            self.W = None
+            
+        if b is not None:
+            self.b = torch.nn.Parameter(b)
+        else:
+            self.b = None
+
+        if w_enc is not None:
+            self.w_enc = torch.nn.Parameter(w_enc)
+            self.w_dec = torch.nn.Parameter(w_dec)
+            self.b_enc = torch.nn.Parameter(b_enc)
+            self.b_dec = torch.nn.Parameter(b_dec)
+            self.threshold = torch.nn.Parameter(threshold)
 
     @classmethod
     def from_file(cls, path: str | Path, device: str = "cpu") -> "CrossLayerTranscoder":
-        import numpy as np
-
-        data = np.load(path)
-        return cls(
-            source_layer=int(data["source_layer"]),
-            target_layer=int(data["target_layer"]),
-            n_source_features=data["W"].shape[0],
-            n_target_features=data["W"].shape[1],
-            W=torch.tensor(data["W"], device=device),
-            b=torch.tensor(data["b"], device=device),
-        )
+        path = Path(path)
+        if path.suffix == ".safetensors":
+            from safetensors.torch import load_file
+            tensors = load_file(path, device=device)
+            import re
+            match = re.search(r"layer_(\d+)", str(path))
+            source_layer = int(match.group(1)) if match else 0
+            target_layer = source_layer + 1
+            return cls(
+                source_layer=source_layer,
+                target_layer=target_layer,
+                n_source_features=tensors["w_enc"].shape[0],
+                n_target_features=tensors["w_enc"].shape[1],
+                w_enc=tensors["w_enc"],
+                w_dec=tensors["w_dec"],
+                b_enc=tensors["b_enc"],
+                b_dec=tensors["b_dec"],
+                threshold=tensors["threshold"],
+            )
+        else:
+            import numpy as np
+            data = np.load(path)
+            return cls(
+                source_layer=int(data["source_layer"]),
+                target_layer=int(data["target_layer"]),
+                n_source_features=data["W"].shape[0],
+                n_target_features=data["W"].shape[1],
+                W=torch.tensor(data["W"], device=device),
+                b=torch.tensor(data["b"], device=device),
+            )
 
     def forward(self, source_features: torch.Tensor) -> torch.Tensor:
-        return source_features @ self.W + self.b
+        if self.W is not None:
+            return source_features @ self.W + self.b
+        # JumpReLU transcoder forward pass mapping hidden to hidden
+        pre_act = source_features @ self.w_enc + self.b_enc
+        z = torch.where(pre_act > self.threshold, pre_act, torch.zeros_like(pre_act))
+        return z @ self.w_dec + self.b_dec

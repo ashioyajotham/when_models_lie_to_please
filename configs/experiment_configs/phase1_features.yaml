@@ -30,10 +30,10 @@ clustering:
   linkage: ward
   n_clusters: null             # Determine by dendrogram; use elbow heuristic
   layer_profiles:
-    # Classify features as early (layers 0-8), mid (9-17), late (18-25) for 4B
-    early: [0, 8]
-    mid: [9, 17]
-    late: [18, 25]
+    # Classify features as early (layers 0-10), mid (11-21), late (22-33) for 4B
+    early: [0, 10]
+    mid: [11, 21]
+    late: [22, 33]
 
 characterization:
   use_neuronpedia: true

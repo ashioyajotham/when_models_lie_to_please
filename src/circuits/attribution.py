@@ -167,14 +167,32 @@ class AttributionGraphBuilder:
                 continue
 
             src_activations = feature_activations[source_layer]  # (n_features,)
-            contributions = transcoder.forward(src_activations.unsqueeze(0)).squeeze(0)
 
-            if target_feat_idx >= contributions.shape[0]:
-                continue
+            if hasattr(transcoder, "W") and transcoder.W is not None:
+                # Legacy / Mock transcoder
+                contributions = transcoder.forward(src_activations.unsqueeze(0)).squeeze(0)
+                if target_feat_idx >= contributions.shape[0]:
+                    continue
+                W_col = transcoder.W[:, target_feat_idx]
+            else:
+                # Real Gemma Scope 2 JumpReLU transcoder
+                if source_layer not in self.saes or target_layer not in self.saes:
+                    continue
+                sae_source = self.saes[source_layer]
+                sae_target = self.saes[target_layer]
+                
+                if target_feat_idx >= sae_target.W_enc.shape[1]:
+                    continue
+                
+                # Dynamic right-to-left projection:
+                # W_eff_col = SAE_source.W_dec @ transcoder.w_enc @ transcoder.w_dec @ SAE_target.W_enc[:, target_feat_idx]
+                v0 = sae_target.W_enc[:, target_feat_idx]
+                v1 = transcoder.w_dec @ v0
+                v2 = transcoder.w_enc @ v1
+                W_col = sae_source.W_dec @ v2
 
-            # contributions[target_feat_idx] = total contribution to that feature
             # To attribute per-source-feature, we use the transcoder weight matrix
-            per_source = src_activations * transcoder.W[:, target_feat_idx]  # (n_src_features,)
+            per_source = src_activations * W_col  # (n_src_features,)
 
             significant = torch.where(per_source.abs() > self.edge_threshold)[0]
             for src_feat_idx in significant.tolist():

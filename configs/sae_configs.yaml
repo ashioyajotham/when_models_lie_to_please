@@ -39,7 +39,7 @@ transcoders:
   # Layer ranges to load for circuit tracing (adjust based on Phase 1 findings)
   # Defaults below cover the full model; narrow after Phase 1 for efficiency.
   layer_range:
-    gemma3_4b: [0, 25]
+    gemma3_4b: [0, 33]
     gemma3_12b: [0, 45]
     gemma3_27b: [0, 61]
 
