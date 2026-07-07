@@ -56,7 +56,7 @@ def main():
     cfg = OmegaConf.load(args.config)
 
     model_name = args.model or cfg.model
-    datasets = args.datasets or cfg.datasets
+    datasets = list(args.datasets or cfg.datasets)
     output_dir = Path(args.output_dir or cfg.output.results_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -75,7 +75,7 @@ def main():
     model.eval()
 
     sae_cfg = OmegaConf.load("configs/sae_configs.yaml")
-    logger.info("Loading SAEs: %dx width", cfg.sae_width.replace("x", ""))
+    logger.info("Loading SAEs: %dx width", int(cfg.sae_width.replace("x", "")))
     saes = load_all_layer_saes(
         model_name=model_name,
         hook_point=cfg.hook_point,

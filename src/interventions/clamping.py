@@ -39,6 +39,7 @@ def generate_with_clamping(
     clamp_configs: list[ClampingConfig],
     max_new_tokens: int = 512,
     temperature: float = 0.0,
+    batch_size: int = 16,
 ) -> list[str]:
     """
     Generate model outputs with specified features clamped.
@@ -58,31 +59,32 @@ def generate_with_clamping(
         layer_to_features.setdefault(cfg.layer, []).extend(cfg.feature_indices)
         layer_to_value[cfg.layer] = cfg.clamp_value
 
-    inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(
-        next(model.parameters()).device
-    )
+    from contextlib import ExitStack
 
     outputs_list = []
-    with torch.no_grad():
-        for layer, feature_indices in layer_to_features.items():
-            sae = active_saes[layer]
-            with clamp_features(sae, feature_indices, layer_to_value[layer]):
+
+    # Run generation in batches to prevent OutOfMemoryError
+    for i in range(0, len(prompts), batch_size):
+        batch_prompts = prompts[i : i + batch_size]
+        inputs = tokenizer(batch_prompts, return_tensors="pt", padding=True, truncation=True).to(
+            next(model.parameters()).device
+        )
+
+        with torch.no_grad():
+            with ExitStack() as stack:
+                for layer, feature_indices in layer_to_features.items():
+                    sae = active_saes[layer]
+                    stack.enter_context(clamp_features(sae, feature_indices, layer_to_value[layer]))
+
                 output_ids = model.generate(
                     **inputs,
                     max_new_tokens=max_new_tokens,
                     do_sample=(temperature > 0),
                     temperature=temperature if temperature > 0 else None,
                 )
-        # If no clamps were applied
-        if not layer_to_features:
-            output_ids = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-            )
 
-    for ids in output_ids:
-        generated = tokenizer.decode(ids[inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-        outputs_list.append(generated)
+        for j, ids in enumerate(output_ids):
+            generated = tokenizer.decode(ids[inputs["input_ids"].shape[1] :], skip_special_tokens=True)
+            outputs_list.append(generated)
 
     return outputs_list

@@ -136,6 +136,7 @@ def generate_with_steering(
     steering_vectors: list[SteeringVector],
     max_new_tokens: int = 512,
     temperature: float = 0.0,
+    batch_size: int = 16,
 ) -> list[str]:
     """Generate with multiple steering vectors applied simultaneously."""
     handles = []
@@ -143,22 +144,28 @@ def generate_with_steering(
         handle = apply_steering_hook(model, sv.layer, sv.direction, sv.multiplier)
         handles.append(handle)
 
-    inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(
-        next(model.parameters()).device
-    )
+    outputs_list = []
+    try:
+        # Run generation in batches to prevent OutOfMemoryError
+        for i in range(0, len(prompts), batch_size):
+            batch_prompts = prompts[i : i + batch_size]
+            inputs = tokenizer(batch_prompts, return_tensors="pt", padding=True, truncation=True).to(
+                next(model.parameters()).device
+            )
 
-    with torch.no_grad():
-        output_ids = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=(temperature > 0),
-            temperature=temperature if temperature > 0 else None,
-        )
+            with torch.no_grad():
+                output_ids = model.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=(temperature > 0),
+                    temperature=temperature if temperature > 0 else None,
+                )
 
-    for handle in handles:
-        handle.remove()
+            for ids in output_ids:
+                generated = tokenizer.decode(ids[inputs["input_ids"].shape[1] :], skip_special_tokens=True)
+                outputs_list.append(generated)
+    finally:
+        for handle in handles:
+            handle.remove()
 
-    return [
-        tokenizer.decode(ids[inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-        for ids in output_ids
-    ]
+    return outputs_list
