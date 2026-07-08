@@ -270,8 +270,6 @@ Each script accepts `--model` and `--output-dir` to override the config defaults
 
 **CoT Faithfulness Detection** — Linear probe work achieving 88% accuracy in detecting whether CoT reasoning faithfully reflects the model's internal process. The current project goes from probe-level detection to circuit-level attribution.
 
-**Value-Aligned Confabulation (VAC) Research** — Framework for context-dependent evaluation of factually ungrounded outputs demonstrating that traditional metrics fail to distinguish harmful from beneficial confabulation. The current project provides the mechanistic explanation for output-internal divergence.
-
 **Greater-Than Circuit SAEs** — Hands-on experience with the exact toolchain (JumpReLU SAEs, feature analysis, circuit discovery) that Gemma Scope 2 scales up.
 
 ---
