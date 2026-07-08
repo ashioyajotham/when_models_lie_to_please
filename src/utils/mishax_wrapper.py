@@ -101,7 +101,9 @@ def _patch_via_manual_hooks(
 
 
 def _get_layer(model: torch.nn.Module, layer_idx: int) -> torch.nn.Module:
-    # Gemma 3 HuggingFace naming: model.model.layers[i]
+    # Gemma 3 HuggingFace naming: model.model.layers[i] or model.model.language_model.layers[i]
+    if hasattr(model.model, "language_model"):
+        return model.model.language_model.layers[layer_idx]
     return model.model.layers[layer_idx]
 
 

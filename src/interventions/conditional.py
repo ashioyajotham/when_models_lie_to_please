@@ -118,7 +118,10 @@ class ConditionalSteerer:
     def _classify_current_state(self, input_ids: torch.Tensor) -> float:
         """Run classifier on residual stream and return P(override active)."""
         residual = {}
-        target_layer = self.model.model.layers[self.config.classifier_layer]
+        if hasattr(self.model.model, "language_model"):
+            target_layer = self.model.model.language_model.layers[self.config.classifier_layer]
+        else:
+            target_layer = self.model.model.layers[self.config.classifier_layer]
 
         def hook(module, input, output):
             h = output[0] if isinstance(output, tuple) else output
@@ -140,7 +143,10 @@ class ConditionalSteerer:
     def _register_steering_hooks(self) -> list:
         handles = []
         for sv in self.config.steering_vectors:
-            layer = self.model.model.layers[sv.layer]
+            if hasattr(self.model.model, "language_model"):
+                layer = self.model.model.language_model.layers[sv.layer]
+            else:
+                layer = self.model.model.layers[sv.layer]
             v = sv.direction.to(next(self.model.parameters()).device)
             m = sv.multiplier
 

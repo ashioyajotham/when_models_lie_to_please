@@ -116,7 +116,10 @@ def apply_steering_hook(
                 set_mock_intervention_active(False)
         return DummyHandle()
 
-    target_layer = model.model.layers[layer]
+    if hasattr(model.model, "language_model"):
+        target_layer = model.model.language_model.layers[layer]
+    else:
+        target_layer = model.model.layers[layer]
     v = steering_vector.to(next(model.parameters()).device)
 
     def hook(module, input, output):

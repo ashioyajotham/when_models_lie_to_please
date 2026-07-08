@@ -118,7 +118,10 @@ class FeatureExtractor:
             positions = [-1]  # Default to last; answer_start requires CoT parsing
 
         for layer_idx in self.saes:
-            layer = self.model.model.layers[layer_idx]
+            if hasattr(self.model.model, "language_model"):
+                layer = self.model.model.language_model.layers[layer_idx]
+            else:
+                layer = self.model.model.layers[layer_idx]
 
             def make_hook(idx: int, pos: list[int]) -> callable:
                 def hook(module, input, output):
