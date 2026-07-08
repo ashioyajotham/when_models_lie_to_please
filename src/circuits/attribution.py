@@ -192,6 +192,7 @@ class AttributionGraphBuilder:
                 W_col = sae_source.W_dec @ v2
 
             # To attribute per-source-feature, we use the transcoder weight matrix
+            W_col = W_col.to(device=src_activations.device, dtype=src_activations.dtype)
             per_source = src_activations * W_col  # (n_src_features,)
 
             significant = torch.where(per_source.abs() > self.edge_threshold)[0]

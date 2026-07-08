@@ -226,15 +226,15 @@ class JumpReLUSAE(torch.nn.Module):
             )
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
-        if x.dtype != self.W_enc.dtype:
-            self.to(dtype=x.dtype)
+        if x.device != self.W_enc.device or x.dtype != self.W_enc.dtype:
+            self.to(device=x.device, dtype=x.dtype)
         pre_act = x @ self.W_enc + self.b_enc
         # JumpReLU: zero out activations below per-feature threshold
         return torch.where(pre_act > self.threshold, pre_act, torch.zeros_like(pre_act))
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
-        if z.dtype != self.W_dec.dtype:
-            self.to(dtype=z.dtype)
+        if z.device != self.W_dec.device or z.dtype != self.W_dec.dtype:
+            self.to(device=z.device, dtype=z.dtype)
         return z @ self.W_dec + self.b_dec
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -325,12 +325,12 @@ class CrossLayerTranscoder(torch.nn.Module):
 
     def forward(self, source_features: torch.Tensor) -> torch.Tensor:
         if self.W is not None:
-            if source_features.dtype != self.W.dtype:
-                self.to(dtype=source_features.dtype)
+            if source_features.device != self.W.device or source_features.dtype != self.W.dtype:
+                self.to(device=source_features.device, dtype=source_features.dtype)
             return source_features @ self.W + self.b
         # JumpReLU transcoder forward pass mapping hidden to hidden
-        if source_features.dtype != self.w_enc.dtype:
-            self.to(dtype=source_features.dtype)
+        if source_features.device != self.w_enc.device or source_features.dtype != self.w_enc.dtype:
+            self.to(device=source_features.device, dtype=source_features.dtype)
         pre_act = source_features @ self.w_enc + self.b_enc
         z = torch.where(pre_act > self.threshold, pre_act, torch.zeros_like(pre_act))
         return z @ self.w_dec + self.b_dec
