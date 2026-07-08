@@ -1,9 +1,9 @@
 # When Models Lie to Please: Tracing Internal-External Alignment Failures via Sparse Interpretability
 
-**Author:** Victor Ashioya  
-**Affiliation:** Bluedot Impact (AI Safety & Interpretability)  
-**Status:** Pre-registration / Active Research  
-**Last Updated:** April 2026
+**Author:** Ashioya Jotham Victor
+**Affiliation:** Independent Researcher 
+**Status:** Active Research
+**Last Updated:** July 2026
 
 ---
 
