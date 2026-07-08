@@ -199,17 +199,18 @@ class JumpReLUSAE(torch.nn.Module):
     @classmethod
     def from_file(cls, path: str | Path, device: str = "cpu") -> "JumpReLUSAE":
         path = Path(path)
+        dtype = torch.bfloat16 if (torch.cuda.is_available() and device != "cpu") else torch.float32
         if path.suffix == ".safetensors":
             from safetensors.torch import load_file
             tensors = load_file(path, device=device)
             return cls(
                 d_model=tensors["w_enc"].shape[0],
                 n_features=tensors["w_enc"].shape[1],
-                threshold=tensors["threshold"],
-                W_enc=tensors["w_enc"],
-                b_enc=tensors["b_enc"],
-                W_dec=tensors["w_dec"],
-                b_dec=tensors["b_dec"],
+                threshold=tensors["threshold"].to(dtype=dtype),
+                W_enc=tensors["w_enc"].to(dtype=dtype),
+                b_enc=tensors["b_enc"].to(dtype=dtype),
+                W_dec=tensors["w_dec"].to(dtype=dtype),
+                b_dec=tensors["b_dec"].to(dtype=dtype),
             )
         else:
             import numpy as np
@@ -217,19 +218,23 @@ class JumpReLUSAE(torch.nn.Module):
             return cls(
                 d_model=data["W_enc"].shape[0],
                 n_features=data["W_enc"].shape[1],
-                threshold=torch.tensor(data["threshold"], device=device),
-                W_enc=torch.tensor(data["W_enc"], device=device),
-                b_enc=torch.tensor(data["b_enc"], device=device),
-                W_dec=torch.tensor(data["W_dec"], device=device),
-                b_dec=torch.tensor(data["b_dec"], device=device),
+                threshold=torch.tensor(data["threshold"], device=device, dtype=dtype),
+                W_enc=torch.tensor(data["W_enc"], device=device, dtype=dtype),
+                b_enc=torch.tensor(data["b_enc"], device=device, dtype=dtype),
+                W_dec=torch.tensor(data["W_dec"], device=device, dtype=dtype),
+                b_dec=torch.tensor(data["b_dec"], device=device, dtype=dtype),
             )
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dtype != self.W_enc.dtype:
+            self.to(dtype=x.dtype)
         pre_act = x @ self.W_enc + self.b_enc
         # JumpReLU: zero out activations below per-feature threshold
         return torch.where(pre_act > self.threshold, pre_act, torch.zeros_like(pre_act))
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
+        if z.dtype != self.W_dec.dtype:
+            self.to(dtype=z.dtype)
         return z @ self.W_dec + self.b_dec
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -287,6 +292,7 @@ class CrossLayerTranscoder(torch.nn.Module):
     @classmethod
     def from_file(cls, path: str | Path, device: str = "cpu") -> "CrossLayerTranscoder":
         path = Path(path)
+        dtype = torch.bfloat16 if (torch.cuda.is_available() and device != "cpu") else torch.float32
         if path.suffix == ".safetensors":
             from safetensors.torch import load_file
             tensors = load_file(path, device=device)
@@ -299,11 +305,11 @@ class CrossLayerTranscoder(torch.nn.Module):
                 target_layer=target_layer,
                 n_source_features=tensors["w_enc"].shape[0],
                 n_target_features=tensors["w_enc"].shape[1],
-                w_enc=tensors["w_enc"],
-                w_dec=tensors["w_dec"],
-                b_enc=tensors["b_enc"],
-                b_dec=tensors["b_dec"],
-                threshold=tensors["threshold"],
+                w_enc=tensors["w_enc"].to(dtype=dtype),
+                w_dec=tensors["w_dec"].to(dtype=dtype),
+                b_enc=tensors["b_enc"].to(dtype=dtype),
+                b_dec=tensors["b_dec"].to(dtype=dtype),
+                threshold=tensors["threshold"].to(dtype=dtype),
             )
         else:
             import numpy as np
@@ -313,14 +319,18 @@ class CrossLayerTranscoder(torch.nn.Module):
                 target_layer=int(data["target_layer"]),
                 n_source_features=data["W"].shape[0],
                 n_target_features=data["W"].shape[1],
-                W=torch.tensor(data["W"], device=device),
-                b=torch.tensor(data["b"], device=device),
+                W=torch.tensor(data["W"], device=device, dtype=dtype),
+                b=torch.tensor(data["b"], device=device, dtype=dtype),
             )
 
     def forward(self, source_features: torch.Tensor) -> torch.Tensor:
         if self.W is not None:
+            if source_features.dtype != self.W.dtype:
+                self.to(dtype=source_features.dtype)
             return source_features @ self.W + self.b
         # JumpReLU transcoder forward pass mapping hidden to hidden
+        if source_features.dtype != self.w_enc.dtype:
+            self.to(dtype=source_features.dtype)
         pre_act = source_features @ self.w_enc + self.b_enc
         z = torch.where(pre_act > self.threshold, pre_act, torch.zeros_like(pre_act))
         return z @ self.w_dec + self.b_dec
