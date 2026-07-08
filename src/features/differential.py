@@ -62,8 +62,8 @@ def compute_differential_activation(
     results: dict[int, list[DifferentialFeature]] = {}
 
     for layer in sorted(control_activations.keys()):
-        ctrl = control_activations[layer].numpy()   # (n, d)
-        trt = treatment_activations[layer].numpy()  # (n, d)
+        ctrl = control_activations[layer].detach().cpu().float().numpy()   # (n, d)
+        trt = treatment_activations[layer].detach().cpu().float().numpy()  # (n, d)
 
         n_features = ctrl.shape[1]
         t_stats, p_values = stats.ttest_ind(trt, ctrl, axis=0, equal_var=False)

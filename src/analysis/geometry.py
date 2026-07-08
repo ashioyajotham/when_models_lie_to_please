@@ -52,7 +52,7 @@ def compute_direction(
         Unit-norm direction vector of shape (d_features,)
     """
     diff = condition_activations.float().mean(0) - baseline_activations.float().mean(0)
-    diff_np = diff.numpy()
+    diff_np = diff.detach().cpu().numpy()
     norm = np.linalg.norm(diff_np)
     if norm < 1e-10:
         return diff_np
@@ -95,10 +95,10 @@ def compute_layer_geometry(
         # Subspace angles between top-k PCA components of each condition
         subspace_dim = min(subspace_dims, unfaithful_activations[layer].shape[0] - 1)
         angles_deg = _compute_subspace_angles(
-            unfaithful_activations[layer].float().numpy(),
-            faithful_activations[layer].float().numpy(),
-            sycophantic_activations[layer].float().numpy(),
-            non_sycophantic_activations[layer].float().numpy(),
+            unfaithful_activations[layer].detach().cpu().float().numpy(),
+            faithful_activations[layer].detach().cpu().float().numpy(),
+            sycophantic_activations[layer].detach().cpu().float().numpy(),
+            non_sycophantic_activations[layer].detach().cpu().float().numpy(),
             n_dims=subspace_dim,
         )
 
