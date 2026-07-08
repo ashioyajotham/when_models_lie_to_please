@@ -1,9 +1,9 @@
 # When Models Lie to Please: Tracing Internal-External Alignment Failures via Sparse Interpretability
 
-**Author:** Ashioya Jotham Victor
-**Affiliation:** Independent Researcher 
-**Status:** Active Research
-**Last Updated:** July 2026
+**Author:** Ashioya Jotham Victor  
+**Affiliation:** Independent Researcher  
+**Status:** Active Research  
+**Last Updated:** July 2026  
 
 ---
 
