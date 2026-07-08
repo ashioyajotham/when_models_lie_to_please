@@ -86,8 +86,8 @@ def train_override_classifier(
     best_layer, best_acc, best_clf = None, 0.0, None
 
     for layer in layers:
-        ctrl = control_activations[layer].numpy()
-        trt = treatment_activations[layer].numpy()
+        ctrl = control_activations[layer].detach().cpu().float().numpy()
+        trt = treatment_activations[layer].detach().cpu().float().numpy()
         X = np.concatenate([ctrl, trt], axis=0)
         y = np.array([0] * len(ctrl) + [1] * len(trt))
 
