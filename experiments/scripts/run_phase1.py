@@ -103,6 +103,9 @@ def main():
             logger.info("Loading cached control activations from %s", ctrl_cache)
             ctrl_acts = load_activations(ctrl_cache)
         else:
+            ctrl_acts = None
+
+        if ctrl_acts is None:
             logger.info("Extracting control activations (%d prompts)", len(controls))
             ctrl_acts = extractor.extract(controls, batch_size=cfg.dataset_params.batch_size)
             save_activations(ctrl_acts, ctrl_cache)
@@ -111,6 +114,9 @@ def main():
             logger.info("Loading cached treatment activations from %s", trt_cache)
             trt_acts = load_activations(trt_cache)
         else:
+            trt_acts = None
+
+        if trt_acts is None:
             logger.info("Extracting treatment activations (%d prompts)", len(treatments))
             trt_acts = extractor.extract(treatments, batch_size=cfg.dataset_params.batch_size)
             save_activations(trt_acts, trt_cache)

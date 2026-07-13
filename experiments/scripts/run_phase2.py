@@ -188,6 +188,9 @@ def main():
         if cache_path.with_suffix(".pkl.gz").exists():
             acts = load_activations(cache_path)
         else:
+            acts = None
+
+        if acts is None:
             logger.info("Extracting activations for condition '%s' (%d prompts)", condition, len(prompts))
             acts = extractor.extract(prompts, batch_size=8)
             save_activations(acts, cache_path)
@@ -238,26 +241,30 @@ def main():
     if "cot_unfaithful" in seed_features and "control" in seed_features:
         ctrl_acts = load_activations(Path("data/activations") / model_name / "control_circuit.pkl")
         trt_acts = load_activations(Path("data/activations") / model_name / "cot_unfaithful_circuit.pkl")
-        seed_indices = [fidx for _, fidx in seed_features.get("cot_unfaithful", [])[:20]]
 
-        divergence_results = find_divergence_layers(ctrl_acts, trt_acts, seed_indices)
-        divergence_freq = aggregate_divergence_layers(divergence_results)
+        if ctrl_acts is None or trt_acts is None:
+            logger.warning("Skipping divergence layer analysis — activation cache missing or corrupted.")
+        else:
+            seed_indices = [fidx for _, fidx in seed_features.get("cot_unfaithful", [])[:20]]
 
-        peak_div_layer = max(divergence_freq, key=divergence_freq.get)
-        logger.info(
-            "Divergence layer analysis: peak at layer %d (%.1f%% of prompts)",
-            peak_div_layer, 100 * divergence_freq[peak_div_layer],
-        )
+            divergence_results = find_divergence_layers(ctrl_acts, trt_acts, seed_indices)
+            divergence_freq = aggregate_divergence_layers(divergence_results)
 
-        with open(output_dir / "divergence_layers.json", "w") as f:
-            json.dump(
-                {
-                    "divergence_frequency": {str(k): v for k, v in divergence_freq.items()},
-                    "peak_layer": peak_div_layer,
-                },
-                f,
-                indent=2,
+            peak_div_layer = max(divergence_freq, key=divergence_freq.get)
+            logger.info(
+                "Divergence layer analysis: peak at layer %d (%.1f%% of prompts)",
+                peak_div_layer, 100 * divergence_freq[peak_div_layer],
             )
+
+            with open(output_dir / "divergence_layers.json", "w") as f:
+                json.dump(
+                    {
+                        "divergence_frequency": {str(k): v for k, v in divergence_freq.items()},
+                        "peak_layer": peak_div_layer,
+                    },
+                    f,
+                    indent=2,
+                )
 
     with open(output_dir / "run_summary.json", "w") as f:
         json.dump(

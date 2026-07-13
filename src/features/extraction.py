@@ -151,11 +151,21 @@ def save_activations(
             pickle.dump(activations, f)
 
 
-def load_activations(path: str | Path) -> dict[int, torch.Tensor]:
+def load_activations(path: str | Path) -> dict[int, torch.Tensor] | None:
+    """Load activations from path. Returns None if cache is corrupted."""
     path = Path(path)
     gz_path = Path(str(path) + ".gz")
-    if gz_path.exists():
-        with gzip.open(gz_path, "rb") as f:
+    try:
+        if gz_path.exists():
+            with gzip.open(gz_path, "rb") as f:
+                return pickle.load(f)
+        with open(path, "rb") as f:
             return pickle.load(f)
-    with open(path, "rb") as f:
-        return pickle.load(f)
+    except (EOFError, gzip.BadGzipFile, pickle.UnpicklingError) as exc:
+        corrupt = gz_path if gz_path.exists() else path
+        logger.warning(
+            "Corrupted activation cache %s (%s). Deleting and re-extracting.",
+            corrupt, exc,
+        )
+        corrupt.unlink(missing_ok=True)
+        return None

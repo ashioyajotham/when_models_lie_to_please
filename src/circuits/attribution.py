@@ -63,11 +63,27 @@ class AttributionGraph:
                 label=node.label,
             )
         for edge in self.edges:
-            G.add_edge(
-                (edge.source.layer, edge.source.feature_index),
-                (edge.target.layer, edge.target.feature_index),
-                weight=edge.weight,
-            )
+            # Ensure edge endpoint nodes exist with full attributes
+            # (add_edge auto-creates bare nodes without attributes)
+            src_id = (edge.source.layer, edge.source.feature_index)
+            tgt_id = (edge.target.layer, edge.target.feature_index)
+            if src_id not in G:
+                G.add_node(
+                    src_id,
+                    layer=edge.source.layer,
+                    feature_index=edge.source.feature_index,
+                    activation=edge.source.activation,
+                    label=edge.source.label,
+                )
+            if tgt_id not in G:
+                G.add_node(
+                    tgt_id,
+                    layer=edge.target.layer,
+                    feature_index=edge.target.feature_index,
+                    activation=edge.target.activation,
+                    label=edge.target.label,
+                )
+            G.add_edge(src_id, tgt_id, weight=edge.weight)
         return G
 
 
