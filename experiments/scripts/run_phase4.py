@@ -235,10 +235,10 @@ def main():
     cot_pairs = load_pairs(DatasetType("cot_bias"))
     syco_pairs = load_pairs(DatasetType("sycophancy_pressure"))
 
-    cot_ctrl_acts = load_or_extract(acts_base / "cot_bias_control.pkl", [p.control for p in cot_pairs])
-    cot_trt_acts = load_or_extract(acts_base / "cot_bias_treatment.pkl", [p.treatment for p in cot_pairs])
-    syco_ctrl_acts = load_or_extract(acts_base / "sycophancy_pressure_control.pkl", [p.control for p in syco_pairs])
-    syco_trt_acts = load_or_extract(acts_base / "sycophancy_pressure_treatment.pkl", [p.treatment for p in syco_pairs])
+    cot_ctrl_acts = load_or_extract(acts_base / "cot_bias" / "control.pkl", [p.control for p in cot_pairs])
+    cot_trt_acts = load_or_extract(acts_base / "cot_bias" / "treatment.pkl", [p.treatment for p in cot_pairs])
+    syco_ctrl_acts = load_or_extract(acts_base / "sycophancy_pressure" / "control.pkl", [p.control for p in syco_pairs])
+    syco_trt_acts = load_or_extract(acts_base / "sycophancy_pressure" / "treatment.pkl", [p.treatment for p in syco_pairs])
 
     # -----------------------------------------------------------------------
     # Train classifiers

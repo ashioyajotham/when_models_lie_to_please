@@ -243,10 +243,10 @@ def main():
     cot_ctrl_pairs = load_pairs(DatasetType("cot_bias"))
     syco_pressure_pairs = load_pairs(DatasetType("sycophancy_pressure"))
 
-    cot_ctrl_cache = Path("data/activations") / model_name / "cot_bias_control.pkl"
-    cot_trt_cache = Path("data/activations") / model_name / "cot_bias_treatment.pkl"
-    syco_ctrl_cache = Path("data/activations") / model_name / "sycophancy_pressure_control.pkl"
-    syco_trt_cache = Path("data/activations") / model_name / "sycophancy_pressure_treatment.pkl"
+    cot_ctrl_cache = Path("data/activations") / model_name / "cot_bias" / "control.pkl"
+    cot_trt_cache = Path("data/activations") / model_name / "cot_bias" / "treatment.pkl"
+    syco_ctrl_cache = Path("data/activations") / model_name / "sycophancy_pressure" / "control.pkl"
+    syco_trt_cache = Path("data/activations") / model_name / "sycophancy_pressure" / "treatment.pkl"
 
     def _load_or_extract(cache_path, prompts):
         if cache_path.with_suffix(".pkl.gz").exists():

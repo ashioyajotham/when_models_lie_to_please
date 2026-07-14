@@ -199,6 +199,21 @@ class AttributionGraphBuilder:
                 
                 if target_feat_idx >= sae_target.W_enc.shape[1]:
                     continue
+
+                # Validate d_model alignment across SAEs and transcoder
+                d_model_target = sae_target.W_enc.shape[0]
+                d_model_source = sae_source.W_dec.shape[1]
+                d_model_tc_in = transcoder.w_dec.shape[1]
+                d_model_tc_out = transcoder.w_enc.shape[0]
+
+                if not (d_model_target == d_model_tc_in == d_model_tc_out == d_model_source):
+                    logger.warning(
+                        "d_model mismatch in attribution chain: "
+                        "sae_target=%d, tc_in=%d, tc_out=%d, sae_source=%d — skipping layer %d→%d",
+                        d_model_target, d_model_tc_in, d_model_tc_out, d_model_source,
+                        source_layer, dest_layer,
+                    )
+                    continue
                 
                 # Dynamic right-to-left projection:
                 # W_eff_col = SAE_source.W_dec @ transcoder.w_enc @ transcoder.w_dec @ SAE_target.W_enc[:, target_feat_idx]
@@ -209,6 +224,15 @@ class AttributionGraphBuilder:
 
             # To attribute per-source-feature, we use the transcoder weight matrix
             W_col = W_col.to(device=src_activations.device, dtype=src_activations.dtype)
+
+            if W_col.shape[0] != src_activations.shape[0]:
+                logger.warning(
+                    "Feature count mismatch: W_col has %d but src_activations has %d "
+                    "features at layer %d — skipping",
+                    W_col.shape[0], src_activations.shape[0], source_layer,
+                )
+                continue
+
             per_source = src_activations * W_col  # (n_src_features,)
 
             significant = torch.where(per_source.abs() > self.edge_threshold)[0]
