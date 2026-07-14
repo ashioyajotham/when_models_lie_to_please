@@ -250,7 +250,9 @@ def main():
 
     def _load_or_extract(cache_path, prompts):
         if cache_path.with_suffix(".pkl.gz").exists():
-            return load_activations(cache_path)
+            acts = load_activations(cache_path)
+            if acts is not None:
+                return acts
         acts = extractor.extract(prompts, batch_size=8)
         save_activations(acts, cache_path)
         return acts
