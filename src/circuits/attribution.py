@@ -231,9 +231,18 @@ class AttributionGraphBuilder:
                 # Dynamic right-to-left projection:
                 # W_eff_col = SAE_source.W_dec @ transcoder.w_enc @ transcoder.w_dec @ SAE_target.W_enc[:, target_feat_idx]
                 v0 = sae_target.W_enc[:, target_feat_idx]
-                v1 = transcoder.w_dec @ v0
-                v2 = transcoder.w_enc @ v1
-                W_col = sae_source.W_dec @ v2
+                
+                # Cast transcoder and source SAE parameters to match target device and dtype (e.g. bfloat16)
+                device = v0.device
+                dtype = v0.dtype
+                
+                w_dec_tc = transcoder.w_dec.to(device=device, dtype=dtype)
+                w_enc_tc = transcoder.w_enc.to(device=device, dtype=dtype)
+                w_dec_src = sae_source.W_dec.to(device=device, dtype=dtype)
+                
+                v1 = w_dec_tc @ v0
+                v2 = w_enc_tc @ v1
+                W_col = w_dec_src @ v2
 
             # To attribute per-source-feature, we use the transcoder weight matrix
             W_col = W_col.to(device=src_activations.device, dtype=src_activations.dtype)
