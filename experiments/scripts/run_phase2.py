@@ -140,20 +140,17 @@ def main():
     )
 
     # Load transcoders
-    from src.utils.gemma_scope import load_transcoder, N_LAYERS
+    from src.utils.gemma_scope import LazyTranscoderDict, N_LAYERS
     n_layers = N_LAYERS[model_name]
-    transcoders = {}
-    for src_layer in range(n_layers - 1):
-        try:
-            tc = load_transcoder(
-                model_name, src_layer, "cross_layer", src_layer + 1,
-                cache_dir="data/activations/transcoder_weights", device=args.device,
-            )
-            transcoders[(src_layer, src_layer + 1)] = tc
-        except Exception as exc:
-            logger.debug("Could not load transcoder %d→%d: %s", src_layer, src_layer + 1, exc)
+    transcoders = LazyTranscoderDict(
+        model_name=model_name,
+        transcoder_type="cross_layer",
+        cache_dir="data/activations/transcoder_weights",
+        device=args.device,
+        n_layers=n_layers,
+    )
 
-    logger.info("Loaded %d transcoders", len(transcoders))
+    logger.info("Initialized lazy load mapping for %d transcoders", len(transcoders))
 
     seed_features = load_phase1_seed_features(
         phase1_results_dir,

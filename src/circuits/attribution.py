@@ -176,10 +176,23 @@ class AttributionGraphBuilder:
         target_feat_idx at target_layer, using available transcoders.
         """
         ancestors = []
-        for (source_layer, dest_layer), transcoder in self.transcoders.items():
-            if dest_layer != target_layer:
+        # Determine candidate keys for adjacent cross-layer transcoders (source_layer -> target_layer)
+        # and skip transcoders (target_layer -> target_layer)
+        candidate_keys = [(target_layer - 1, target_layer), (target_layer, target_layer)]
+
+        for key in candidate_keys:
+            source_layer, dest_layer = key
+            if source_layer < 0:
                 continue
             if source_layer not in feature_activations:
+                continue
+
+            # Lookup transcoder safely without iterating
+            try:
+                if key not in self.transcoders:
+                    continue
+                transcoder = self.transcoders[key]
+            except KeyError:
                 continue
 
             src_activations = feature_activations[source_layer]  # (n_features,)

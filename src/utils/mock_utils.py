@@ -140,8 +140,18 @@ class MockModel(torch.nn.Module):
         return self
 
     @classmethod
-    def from_pretrained(cls, *args, **kwargs) -> MockModel:
-        return cls()
+    def from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs) -> MockModel:
+        n_layers = 26  # default fallback
+        model_str = str(pretrained_model_name_or_path).lower()
+        if "3-4b" in model_str or "gemma3_4b" in model_str:
+            n_layers = 34
+        elif "3-1b" in model_str or "gemma3_1b" in model_str:
+            n_layers = 18
+        elif "3-12b" in model_str or "gemma3_12b" in model_str:
+            n_layers = 46
+        elif "3-27b" in model_str or "gemma3_27b" in model_str:
+            n_layers = 62
+        return cls(n_layers=n_layers)
 
 
 class MockOutput:

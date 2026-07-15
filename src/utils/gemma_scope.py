@@ -10,6 +10,8 @@ HuggingFace repo: google/gemma-scope-2
 
 from __future__ import annotations
 
+import collections
+import collections.abc
 import logging
 import os
 from dataclasses import dataclass
@@ -117,6 +119,155 @@ def load_sae(
     return JumpReLUSAE.from_file(local_path, device=device)
 
 
+class LazySAEDict(collections.abc.Mapping):
+    """
+    A dictionary-like mapping that loads JumpReLU SAEs lazily on-demand.
+    Uses an LRU cache to limit concurrent memory usage.
+    """
+    def __init__(
+        self,
+        model_name: str,
+        hook_point: HookPoint,
+        width_multiplier: int,
+        cache_dir: str | Path | None,
+        device: str,
+        layer_range: tuple[int, int] | None = None,
+        max_cache_size: int = 4,
+    ):
+        self.model_name = model_name
+        self.hook_point = hook_point
+        self.width_multiplier = width_multiplier
+        self.cache_dir = cache_dir
+        self.device = device
+        self.max_cache_size = max_cache_size
+
+        n_layers = N_LAYERS[model_name]
+        start, end = layer_range if layer_range else (0, n_layers - 1)
+        self._keys = list(range(start, end + 1))
+        self._cache = collections.OrderedDict()
+
+    def __getitem__(self, key: int) -> JumpReLUSAE:
+        if key not in self._keys:
+            raise KeyError(key)
+
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+
+        # Load SAE on CPU to conserve GPU VRAM
+        sae = load_sae(
+            model_name=self.model_name,
+            layer=key,
+            hook_point=self.hook_point,
+            width_multiplier=self.width_multiplier,
+            cache_dir=self.cache_dir,
+            device="cpu",
+        )
+
+        self._cache[key] = sae
+
+        if len(self._cache) > self.max_cache_size:
+            old_key, old_sae = self._cache.popitem(last=False)
+            del old_sae
+            import gc
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        return sae
+
+    def __len__(self) -> int:
+        return len(self._keys)
+
+    def __iter__(self):
+        return iter(self._keys)
+
+    def __contains__(self, key: int) -> bool:
+        return key in self._keys
+
+    def clear(self):
+        self._cache.clear()
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+class LazyTranscoderDict(collections.abc.Mapping):
+    """
+    A dictionary-like mapping that loads CrossLayerTranscoders lazily on-demand.
+    Uses an LRU cache to limit concurrent memory usage.
+    """
+    def __init__(
+        self,
+        model_name: str,
+        transcoder_type: TranscoderType,
+        cache_dir: str | Path | None,
+        device: str,
+        n_layers: int,
+        max_cache_size: int = 4,
+    ):
+        self.model_name = model_name
+        self.transcoder_type = transcoder_type
+        self.cache_dir = cache_dir
+        self.device = device
+        self.max_cache_size = max_cache_size
+
+        # Keys are tuples of (source_layer, target_layer)
+        self._keys = [(layer, layer + 1) for layer in range(n_layers - 1)]
+        self._cache = collections.OrderedDict()
+
+    def __getitem__(self, key: tuple[int, int]) -> CrossLayerTranscoder:
+        if key not in self._keys:
+            raise KeyError(key)
+
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+
+        src_layer, dest_layer = key
+        try:
+            tc = load_transcoder(
+                model_name=self.model_name,
+                source_layer=src_layer,
+                transcoder_type=self.transcoder_type,
+                target_layer=dest_layer,
+                cache_dir=self.cache_dir,
+                device="cpu",  # Load on CPU first
+            )
+        except Exception as exc:
+            logger.warning("Could not load transcoder %d→%d: %s", src_layer, dest_layer, exc)
+            raise KeyError(key) from exc
+
+        self._cache[key] = tc
+
+        if len(self._cache) > self.max_cache_size:
+            old_key, old_tc = self._cache.popitem(last=False)
+            del old_tc
+            import gc
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        return tc
+
+    def __len__(self) -> int:
+        return len(self._keys)
+
+    def __iter__(self):
+        return iter(self._keys)
+
+    def __contains__(self, key: tuple[int, int]) -> bool:
+        return key in self._keys
+
+    def clear(self):
+        self._cache.clear()
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
 def load_all_layer_saes(
     model_name: str,
     hook_point: HookPoint = "resid_post",
@@ -126,21 +277,17 @@ def load_all_layer_saes(
     device: str = "cpu",
 ) -> dict[int, "JumpReLUSAE"]:
     """
-    Load SAEs for all (or a range of) layers in the model.
-
-    Returns a dict mapping layer index to SAE instance.
+    Load SAEs for all (or a range of) layers in the model lazily.
     """
-    n_layers = N_LAYERS[model_name]
-    start, end = layer_range if layer_range else (0, n_layers - 1)
-    saes = {}
-    for layer in range(start, end + 1):
-        try:
-            saes[layer] = load_sae(
-                model_name, layer, hook_point, width_multiplier, cache_dir, device
-            )
-        except Exception as exc:
-            logger.warning("Could not load SAE for layer %d: %s", layer, exc)
-    return saes
+    return LazySAEDict(
+        model_name=model_name,
+        hook_point=hook_point,
+        width_multiplier=width_multiplier,
+        layer_range=layer_range,
+        cache_dir=cache_dir,
+        device=device,
+    )
+
 
 
 def load_transcoder(

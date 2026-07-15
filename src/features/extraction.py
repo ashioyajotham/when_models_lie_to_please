@@ -64,19 +64,35 @@ class FeatureExtractor:
         Returns:
             Dict mapping layer index to tensor of shape (n_prompts, n_features).
         """
-        all_activations: dict[int, list[torch.Tensor]] = {layer: [] for layer in self.saes}
+        # First, extract and accumulate all residuals on CPU
+        all_residuals: dict[int, list[torch.Tensor]] = {layer: [] for layer in self.saes}
 
         for batch_start in range(0, len(prompts), batch_size):
             batch = prompts[batch_start : batch_start + batch_size]
             residuals = self._get_residuals(batch, token_position)
 
-            for layer_idx, sae in self.saes.items():
-                layer_resid = residuals[layer_idx]  # (batch, d_model)
-                with torch.no_grad():
-                    features, _ = sae(layer_resid.to(sae.W_enc.device))
-                all_activations[layer_idx].append(features.cpu())
+            for layer_idx in self.saes:
+                all_residuals[layer_idx].append(residuals[layer_idx].cpu())
 
-        return {layer: torch.cat(acts, dim=0) for layer, acts in all_activations.items()}
+        # Then, encode layer-by-layer, keeping at most one SAE on CUDA at a time
+        all_activations: dict[int, torch.Tensor] = {}
+        for layer_idx in self.saes:
+            sae = self.saes[layer_idx]
+            layer_resids = torch.cat(all_residuals[layer_idx], dim=0)  # (n_prompts, d_model)
+
+            # Record original device to restore it
+            orig_device = next(sae.parameters()).device if list(sae.parameters()) else "cpu"
+
+            sae.to(self.device)
+            with torch.no_grad():
+                features, _ = sae(layer_resids.to(self.device))
+            all_activations[layer_idx] = features.cpu()
+
+            sae.to(orig_device)
+            if "cuda" in str(self.device):
+                torch.cuda.empty_cache()
+
+        return all_activations
 
     def _get_residuals(
         self,
